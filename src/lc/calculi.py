@@ -1,31 +1,10 @@
-import itertools
 import random
 import string
 from .primitives import Term, Var, App, Abs
 
 
-def free_vars(term: Term) -> set[str]:
-    if isinstance(term, Var):
-        return {term.name}
-    elif isinstance(term, App):
-        return free_vars(term.func).union(free_vars(term.arg))
-    elif isinstance(term, Abs):
-        result = free_vars(term.body)
-        result.discard(term.param)
-        return result
-    return set()
-
-
-def get_unique_var_name(names: set[str]) -> str:
-    # alphabet = string.ascii_lowercase
-    # n = 1
-    # while True:
-    #     for s in map(''.join, itertools.product(alphabet, repeat=n)):
-    #         if s not in names:
-    #             return s
-    #     n += 1
-    return ''.join(random.choices(string.ascii_lowercase, k=10))
-
+def get_unique_var_name() -> str:
+    return ''.join(random.choices(string.ascii_lowercase + '_', k=12))
 
 def subst(term: Term, var: str, value: Term) -> Term:
     if isinstance(term, Var):
@@ -37,15 +16,14 @@ def subst(term: Term, var: str, value: Term) -> Term:
     elif isinstance(term, Abs):
         if term.param == var:
             return term
-        elif var not in free_vars(term.body) or term.param not in free_vars(value):
+        elif var not in term.body.free_vars or term.param not in value.free_vars:
             return Abs(term.param, subst(term.body, var, value))
         else:
-            new_variable = get_unique_var_name(free_vars(term).union(free_vars(value)))
+            new_variable = get_unique_var_name()
             first_step = subst(term.body, term.param, Var(new_variable))
             second_step = subst(first_step, var, value)
             return Abs(new_variable, second_step)
     return term
-
 
 def beta_reduce(term: Term) -> Term:
     if isinstance(term, App) and isinstance(term.func, Abs):
@@ -67,7 +45,6 @@ def beta_reduce(term: Term) -> Term:
     else:
         return term
 
-
 def normalize(term: Term, n_steps=None, trace=False) -> Term:
     prev = None
     i = 0
@@ -77,6 +54,9 @@ def normalize(term: Term, n_steps=None, trace=False) -> Term:
         prev = term
         term = beta_reduce(term)
         i += 1
+
+        if i % 10000 == 0:
+            print(f"Normalization step = {i}")
 
     if trace:
         print(f"Normalized with steps = {i}")

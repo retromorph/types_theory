@@ -6,9 +6,9 @@ import cProfile
 
 from src.lc.parser import LambdaParser
 from src.lc.primitives import Term
-from lc_let.parser import LambdaLetParser
+from lc_macro.parser import LambdaLetParser
 from src.lc.calculi import normalize
-from src.lc_let.preprocessors import NumberPreprocessor
+from src.lc_macro.preprocessors import NumberPreprocessor
 
 
 def church_to_int(expr: str) -> int:
@@ -73,13 +73,13 @@ with open("src/program.lc", "r", encoding="utf-8") as file:
     for line in parsed_program.lines:
         if isinstance(line.value, Term):
             # print(line.value.print())
-            result = cProfile.run('normalize(line.value, trace=True)')
-            # result = normalize(line.value, trace=True)
-            # try:
-            #     print(church_to_int(result.print(pretty=True)))
-            # except:
-            #     print(result.print(pretty=True))
-            # print("=======================")
+            # result = cProfile.run('normalize(line.value, trace=True)')
+            result = normalize(line.value, trace=True)
+            try:
+                print(church_to_int(result.print(pretty=True)))
+            except:
+                print(result.print(pretty=True))
+            print("=======================")
 
 # \x. \y. \s. \z. x s (y s z)
 # + := \x. \y. \s. \z. x s (y s z);

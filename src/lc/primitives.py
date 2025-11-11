@@ -1,10 +1,12 @@
 from __future__ import annotations
 import re
-from dataclasses import dataclass
 from abc import ABC
+from typing import Dict, Optional
 
 
 class Term(ABC):
+    free_vars: set[str]
+
     def print(self, pretty=False) -> str:
         def print_step(term: Term) -> tuple[str, str]:
             if isinstance(term, Var):
@@ -32,18 +34,41 @@ class Term(ABC):
         return result
 
 
-@dataclass(frozen=True)
 class Var(Term):
     name: str
 
+    def __init__(self, name: str):
+        self.name = name
+        self.free_vars = {name}
 
-@dataclass(frozen=True)
+    def __eq__(self, other):
+        return isinstance(other, Var) and self.name == other.name
+
+
 class App(Term):
     func: Term
     arg: Term
 
+    def __init__(self, func: Term, arg: Term):
+        self.func = func
+        self.arg = arg
+        self.free_vars = func.free_vars | arg.free_vars
 
-@dataclass(frozen=True)
+    def __eq__(self, other):
+        if not isinstance(other, App):
+            return NotImplemented
+        return isinstance(other, App) and self.func == other.func and self.arg == other.arg
+
+
 class Abs(Term):
     param: str
     body: Term
+
+    def __init__(self, param: str, body: Term, env: Optional[Dict[str, "Thunk"]] = None):
+        self.param = param
+        self.body = body
+        self.free_vars = body.free_vars.copy() - {param}
+        self.env = env
+
+    def __eq__(self, other):
+        return isinstance(other, Abs) and self.param == other.param and self.body == other.body
