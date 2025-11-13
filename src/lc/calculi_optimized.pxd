@@ -1,6 +1,8 @@
 from libc.stdint cimport uint32_t
 
 cdef class Term:
+    cdef uint32_t _hash
+    cdef Term nf
     cpdef Term shift(self, uint32_t offset, uint32_t cutoff=*)
     cpdef Term subst(self, uint32_t idx, Term value)
     cpdef Term reduce(self)

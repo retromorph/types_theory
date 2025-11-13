@@ -20,7 +20,7 @@ class CLI:
     def run_from_file(self):
         with open(self.variables['I'], "r", encoding="utf-8") as input_file:
             program = input_file.read()
-            lambda_parser = LambdaParser(program, calculi='Optimized')
+            lambda_parser = LambdaParser(program)
             parsed_term = lambda_parser.parse()
             normalized_term = self.normalize(parsed_term)
 

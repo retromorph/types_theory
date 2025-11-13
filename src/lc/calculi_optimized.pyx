@@ -8,6 +8,13 @@ from typing import Dict, Tuple, Optional
 _term_cache: Dict[Tuple, "Term"] = {}
 
 cdef class Term:
+    def __init__(self):
+        self._hash = 0
+        self.nf = None
+
+    def __hash__(self) -> int:
+        return self._hash
+
     cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
         raise NotImplementedError("Subclasses must implement this method")
 
@@ -65,16 +72,21 @@ cdef class Term:
 
 cdef class Var(Term):
     def __init__(self, uint32_t idx):
+        super().__init__()
         self.idx = idx
+        self._hash = hash(("v", idx))
 
     cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
-        return Var(self.idx + offset) if self.idx >= cutoff else self
+        return VarFact(self.idx + offset) if self.idx >= cutoff else self
 
     cpdef Term subst(self, uint32_t idx, Term value):
         return value if self.idx == idx else self
 
     cpdef Term reduce(self):
         return self
+
+    def __hash__(self) -> int:
+        return self._hash
 
     def __eq__(self, other):
         return isinstance(other, Var) and self.idx == (<Var>other).idx
@@ -86,33 +98,51 @@ cdef class Var(Term):
         return f'{self.idx}'
 
 
+def VarFact(idx: int) -> Var:
+    key = ("v", idx)
+    t = _term_cache.get(key)
+    if t is None:
+        t = Var(idx)
+        _term_cache[key] = t
+    return t
+
+
 cdef class App(Term):
     def __init__(self, Term func, Term arg):
+        super().__init__()
         self.func = func
         self.arg = arg
+        self._hash = hash(("a", func, arg))
 
     cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
-        return App(self.func.shift(offset, cutoff), self.arg.shift(offset, cutoff))
+        return AppFact(self.func.shift(offset, cutoff), self.arg.shift(offset, cutoff))
 
     cpdef Term subst(self, uint32_t idx, Term value):
-        return App(
+        return AppFact(
             self.func.subst(idx, value),
             self.arg.subst(idx, value)
         )
 
     cpdef Term reduce(self):
+        if self.nf is not None:
+            return self.nf
+
         if isinstance(self.func, Abs):
-            return (<Abs>self.func).body.subst(0, self.arg.shift(1)).shift(-1)
+            self.nf = (<Abs>self.func).body.subst(0, self.arg.shift(1)).shift(-1).reduce()
+            return self.nf
 
         cdef Term reduced_func = self.func.reduce()
         if reduced_func != self.func:
-            return App(reduced_func, self.arg)
+            return AppFact(reduced_func, self.arg)
 
         cdef Term reduced_arg = self.arg.reduce()
         if reduced_arg != self.arg:
-            return App(self.func, reduced_arg)
+            return AppFact(self.func, reduced_arg)
 
         return self
+
+    def __hash__(self) -> int:
+        return self._hash
 
     def __eq__(self, other):
         return isinstance(other, App) and self.func == other.func and self.arg == other.arg
@@ -133,18 +163,41 @@ cdef class App(Term):
         return f"({repr(self.func)} {repr(self.arg)})"
 
 
+def AppFact(f: Term, a: Term) -> App:
+    key = ("a", f, a)
+    t = _term_cache.get(key)
+    if t is None:
+        t = App(f, a)
+        _term_cache[key] = t
+    return t
+
+
 cdef class Abs(Term):
     def __init__(self, Term body):
+        super().__init__()
         self.body = body
+        self._hash = hash(("l", body))
 
     cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
-        return Abs(self.body.shift(offset, cutoff + 1))
+        return AbsFact(self.body.shift(offset, cutoff + 1))
 
     cpdef Term subst(self, uint32_t idx, Term value):
-        return Abs(self.body.subst(idx + 1, value.shift(1)))
+        return AbsFact(self.body.subst(idx + 1, value.shift(1)))
 
     cpdef Term reduce(self):
-        return Abs(self.body.reduce())
+        if self.nf is not None:
+            return self.nf
+
+        body_nf = self.body.reduce()
+        if body_nf is self.body:
+            nf = self
+        else:
+            nf = AbsFact(body_nf)
+        self.nf = nf
+        return nf
+
+    def __hash__(self) -> int:
+        return self._hash
 
     def __eq__(self, other):
         return isinstance(other, Abs) and self.body == other.body
@@ -157,3 +210,12 @@ cdef class Abs(Term):
     #
     def __repr__(self) -> str:
         return f"(\\. {repr(self.body)})"
+
+
+def AbsFact(body: Term) -> Abs:
+    key = ("l", body)
+    t = _term_cache.get(key)
+    if t is None:
+        t = Abs(body)
+        _term_cache[key] = t
+    return t

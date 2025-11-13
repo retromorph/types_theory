@@ -1,6 +1,6 @@
 import re
 from .calculi_vanilla import Term, Var, App, Abs
-from .calculi_optimized import Term as TermOpt, Var as VarOpt, App as AppOpt, Abs as AbsOpt
+from .calculi_optimized import Term as TermOpt, VarFact, AppFact, AbsFact
 from ..common.tokenizer import Tokenizer
 
 VARIABLES_REGEX = r"[a-z_]+"
@@ -75,15 +75,15 @@ class LambdaParser:
             if term.name not in env:
                 raise ValueError(f"Free variable {term.name} encountered")
             idx = env.index(term.name)
-            return VarOpt(idx)
+            return VarFact(idx)
 
         elif isinstance(term, Abs):
             new_env = [term.param] + env
             body = self.to_optimized(term.body, new_env)
-            return AbsOpt(body)
+            return AbsFact(body)
 
         elif isinstance(term, App):
-            return AppOpt(
+            return AppFact(
                 self.to_optimized(term.func, env),
                 self.to_optimized(term.arg, env)
             )
