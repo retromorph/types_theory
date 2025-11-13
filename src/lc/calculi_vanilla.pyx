@@ -1,6 +1,9 @@
+# distutils: language=c++
 from __future__ import annotations
 import re
 from ..common.utils import get_random_var_name
+from libcpp.unordered_set cimport unordered_set
+from libcpp.string cimport string as cpp_string
 
 cdef class Term:
     cpdef Term subst(self, str var, Term value):
@@ -27,7 +30,8 @@ cdef class Term:
 cdef class Var(Term):
     def __init__(self, str name):
         self.name = name
-        self.free_vars = {name}
+        self.free_vars = unordered_set[cpp_string]()
+        self.free_vars.insert(cpp_string(name.encode()))
 
     cpdef Term subst(self, str var, Term value):
         if self.name == var:
@@ -49,9 +53,18 @@ cdef class Var(Term):
 
 cdef class App(Term):
     def __init__(self, Term func, Term arg):
+        cdef cpp_string cpp_var
         self.func = func
         self.arg = arg
-        self.free_vars = func.free_vars | arg.free_vars
+        self.free_vars = unordered_set[cpp_string]()
+
+        # Copy all elements from func.free_vars
+        for cpp_var in func.free_vars:
+            self.free_vars.insert(cpp_var)
+
+        # Copy all elements from arg.free_vars
+        for cpp_var in arg.free_vars:
+            self.free_vars.insert(cpp_var)
 
     cpdef Term subst(self, str var, Term value):
         return App(
@@ -94,16 +107,25 @@ cdef class App(Term):
 
 cdef class Abs(Term):
     def __init__(self, str param, Term body):
+        cdef cpp_string cpp_var
+        cdef cpp_string cpp_param = cpp_string(param.encode())
         self.param = param
         self.body = body
-        self.free_vars = body.free_vars - {param}
+        self.free_vars = unordered_set[cpp_string]()
+
+        # Copy all elements from body.free_vars except param
+        for cpp_var in body.free_vars:
+            if cpp_var != cpp_param:
+                self.free_vars.insert(cpp_var)
 
     cpdef Term subst(self, str var, Term value):
+        cdef cpp_string cpp_var = cpp_string(var.encode())
+        cdef cpp_string cpp_param = cpp_string(self.param.encode())
         if self.param == var:
             return self
-        elif var not in self.body.free_vars and self.param not in value.free_vars:
+        elif self.body.free_vars.count(cpp_var) == 0 and value.free_vars.count(cpp_param) == 0:
             return self
-        elif var not in self.body.free_vars or self.param not in value.free_vars:
+        elif self.body.free_vars.count(cpp_var) == 0 or value.free_vars.count(cpp_param) == 0:
             return Abs(
                 self.param,
                 self.body.subst(var, value)

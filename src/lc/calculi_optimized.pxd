@@ -1,9 +1,9 @@
 # distutils: language=c++
 from libcpp.unordered_set cimport unordered_set
-from libcpp.string cimport string as cpp_string
+from libcpp.string cimport string
 
 cdef class Term:
-    cdef public unordered_set[cpp_string] free_vars
+    cdef public unordered_set[string] free_vars
     cpdef Term subst(self, str var, Term value)
     cpdef Term reduce(self)
 
