@@ -3,31 +3,11 @@ import re
 from .preprocessors import Preprocessor
 from .primitives import Let, Line, Program
 from src.lc.parser import LambdaParser
-from src.lc.calculi import normalize
+from src.common.tokenizer import Tokenizer
 
 
-LET_REGEX = r"[A-Z+\-*/\[\]&|~_<>=]+"
-VARIABLES_REGEX = r"[a-z_]+"
-TOKEN_REGEX = re.compile(r"\s*(?:([A-Z+\-*/\[\]&|~_<>=]+)|(:=)|([a-z_\\.() ]+)$)")
-
-
-class LambdaLetTokenizer:
-    def __init__(self, text: str):
-        self.tokens = TOKEN_REGEX.findall(text)
-        self.index = 0
-
-    def peek(self):
-        if self.index >= len(self.tokens):
-            return None
-        for group in self.tokens[self.index]:
-            if group:
-                return group
-        return None
-
-    def next(self):
-        tok = self.peek()
-        self.index += 1
-        return tok
+MACRO_REGEX = r"[A-Z+\-*/\[\]&|~_<>=]+"
+LC_MACRO_REGEX = re.compile(rf"\s*(?:({MACRO_REGEX})|(:=)|([a-z_\\.() ]+)$)")
 
 
 class LambdaLetParser:
@@ -37,12 +17,6 @@ class LambdaLetParser:
             self.text = preprocessor.perform(self.text)
 
         self.substitutions = {}
-
-    # def perform_substitution(self, line: str) -> str:
-    #     if len(self.substitutions) == 0:
-    #         return line
-    #     pattern = re.compile("|".join(re.escape(k) for k in self.substitutions.keys()))
-    #     return pattern.sub(lambda m: f"({self.substitutions[m.group(0)]})", line)
 
     def perform_substitution(self, line: str) -> str:
         if len(self.substitutions) == 0:
@@ -67,25 +41,14 @@ class LambdaLetParser:
 
     def parse_line(self, line: str) -> Line:
         line = self.perform_substitution(line)
-        tok = LambdaLetTokenizer(line)
-        if re.match(LET_REGEX, tok.peek()):
+        tok = Tokenizer(line, token_regex=LC_MACRO_REGEX)
+        if re.match(MACRO_REGEX, tok.peek()):
             return Line(self.parse_let(tok))
         else:
             parser = LambdaParser(line)
             return Line(parser.parse())
 
-    def parse_let(self, tok: LambdaLetTokenizer) -> Let:
-        # slug = tok.next()
-        # tok.next()
-        # body_str = tok.next()
-        # if slug == "<":
-        #     print(slug)
-        #     print(body_str)
-        #     # print(reduced_body.print())
-        #     print('=============')
-        # body = LambdaParser(body_str).parse()
-        # self.substitutions[slug] = body_str
-        # return Let(slug, body)
+    def parse_let(self, tok: Tokenizer) -> Let:
         slug = tok.next()
         tok.next()
         body_str = tok.next()
@@ -96,11 +59,6 @@ class LambdaLetParser:
             self.substitutions[slug] = body_str
             return Let(slug, body)
         else:
-            reduced_body = normalize(body, n_steps=1000, trace=False)
-            self.substitutions[slug] = reduced_body.print()
+            reduced_body, _ = body.normalize( n_steps=1000)
+            self.substitutions[slug] = repr(reduced_body)
             return Let(slug, reduced_body)
-
-    def execute(self):
-        program = self.parse()
-
-        pass

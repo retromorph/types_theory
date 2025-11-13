@@ -3,7 +3,7 @@ import re
 import random
 import string
 import pandas as pd
-from src.lc.primitives import Var, App, Abs
+from src.lc.calculi_vanilla import Var, App, Abs
 from abc import ABC, abstractmethod
 
 PREPROCESSORS_DIR = 'preprocessors_tmp'

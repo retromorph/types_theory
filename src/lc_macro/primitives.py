@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Union
-from src.lc.primitives import Term
+from src.lc.calculi_vanilla import Term
 from dataclasses import dataclass
 
 

@@ -1,42 +1,23 @@
 import re
-from .primitives import Term, Var, App, Abs
+from .calculi_vanilla import Term, Var, App, Abs
+from ..common.tokenizer import Tokenizer
 
-
-VARIABLES_REGEX = r"[a-z_][a-z_]*"
-TOKEN_REGEX = re.compile(r"\s*(?:(\\)|(\.)|(\()|(\))|([a-z_][a-z_]*)|$)")
-
-
-class LambdaTokenizer:
-    def __init__(self, text):
-        self.tokens = TOKEN_REGEX.findall(text)
-        self.index = 0
-
-    def peek(self):
-        if self.index >= len(self.tokens):
-            return None
-        for group in self.tokens[self.index]:
-            if group:
-                return group
-        return None
-
-    def next(self):
-        tok = self.peek()
-        self.index += 1
-        return tok
+VARIABLES_REGEX = r"[a-z_]+"
+LC_REGEX = re.compile(rf"\s*(?:(\\)|(\.)|(\()|(\))|({VARIABLES_REGEX})|$)")
 
 
 class LambdaParser:
     def __init__(self, text):
-        self.tok = LambdaTokenizer(text)
+        self.tok = Tokenizer(text, token_regex=LC_REGEX)
 
     def parse(self) -> Term:
         term = self.parse_term()
-        if self.tok.peek() is not None and self.tok.peek() != '':
+        if self.tok.peek() is not None and self.tok.peek() != "":
             raise SyntaxError(f"Unexpected token: {self.tok.peek()}")
         return term
 
     def parse_term(self) -> Term:
-        if self.tok.peek() == '\\':
+        if self.tok.peek() == "\\":
             return self.parse_abs()
         else:
             return self.parse_app()
@@ -47,7 +28,7 @@ class LambdaParser:
         if not re.match(VARIABLES_REGEX, param or ""):
             raise SyntaxError(f"Expected variable after \\, got {param}")
         dot = self.tok.next()
-        if dot != '.':
+        if dot != ".":
             raise SyntaxError(f"Expected '.', got {dot}")
         body = self.parse_term()
         return Abs(param, body)
@@ -56,10 +37,10 @@ class LambdaParser:
         left = self.parse_atom()
         while True:
             nxt = self.tok.peek()
-            if nxt is None or nxt in (')', '.'):
+            if nxt is None or nxt in (")", "."):
                 break
 
-            if nxt == '\\':
+            if nxt == "\\":
                 right = self.parse_abs()
             else:
                 right = self.parse_atom()
@@ -68,10 +49,10 @@ class LambdaParser:
 
     def parse_atom(self) -> Term:
         tok = self.tok.peek()
-        if tok == '(':
+        if tok == "(":
             self.tok.next()
             term = self.parse_term()
-            if self.tok.next() != ')':
+            if self.tok.next() != ")":
                 raise SyntaxError("Expected ')'")
             return term
         elif re.match(VARIABLES_REGEX, tok or ""):
