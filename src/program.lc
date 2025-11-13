@@ -23,64 +23,34 @@ ISZERO := \n. n (\x. FALSE) TRUE;
     0
     (+ 1 (div (- m n) n))
 );
+FACTORIAL := Y (\f.\x. IF (== x 0) 1 (* x (f (- x 1))));
 
 [] := \x.\y. (\f. f x y);
 L := \p. p (\x.\y. x);
 R := \p. p (\x.\y. y);
 SWAP := \p. p (\x.\y. \f. f y x);
 
-NIL := [] TRUE FALSE;
-ISNIL := L;
-LIST := \h.\t. [] FALSE ([] h t);
-HEAD := \z. L (R z);
-TAIL := \z. R (R z);
-LENGTH := Y (
-\f.\x.
-    IF (ISNIL x)
-    0
-    (+ 1 (f (TAIL x)))
-);
+NIL := FALSE;
+SINGLE := \h.\c.\n. c h n;
+LIST := \h.\t.\c.\n. c h (t c n);
+++ := \l.\t.\c.\n. l c (t c n);
+ISNIL := \l. l (\h.\r. FALSE) TRUE;
+HEAD := \l. l (\h.\r. h) FALSE;
+FOLDR := LIST;
+FOLDL := \f.\z.\l.
+    (l (\h.\g.\x. g (f x h)) (\x. x)) z;
+LENGTH := \l.
+    l (\h.\r. (+ r 1)) 0;
+FILTER := \p.\l.\c.\n.
+    l (\h.\r. IF (p h) (c h r) r) n;
+TAIL := \l.\c.\n. l (\h.\r.\g. g h (r c)) (\c. n) (\h.\t. t);
 NTH := (Y (
-\slice.\i.\arr.\n.
+\nth.\i.\arr.\n.
     IF (== i n)
     (HEAD arr)
-    (slice (+ i 1) (TAIL arr) n)
+    (nth (+ i 1) (TAIL arr) n)
 ) 0);
-REVERSE := Y (
-\reverse.\new_arr.\arr.
-    IF (ISNIL arr)
-    (new_arr)
-    (reverse (LIST (HEAD arr) new_arr) (TAIL arr))
-) NIL;
-SLICE := (Y (
-\slice.\i.\new_arr.\arr.\l.\r.
-    IF (== i r)
-    (REVERSE new_arr)
-    (
-        IF (< i l)
-        (slice (+ i 1) new_arr (TAIL arr) l r)
-        (slice (+ i 1) (LIST (HEAD arr) new_arr) (TAIL arr) l r)
-    )
-) 0 NIL);
-FILTER := Y (
-\filter.\new_arr.\condition.\arr.
-    IF (ISNIL arr)
-    (REVERSE new_arr)
-    (
-        IF (condition (HEAD arr))
-        (filter (LIST (HEAD arr) new_arr) condition (TAIL arr))
-        (filter new_arr condition (TAIL arr))
-    )
-) NIL;
-++ := Y (
-\concat.\new_arr.\larr.\rarr.
-    IF (ISNIL larr)
-        (IF (ISNIL rarr)
-            (REVERSE new_arr)
-            (concat (LIST (HEAD rarr) new_arr) larr (TAIL rarr))
-        )
-        (concat (LIST (HEAD larr) new_arr) (TAIL larr) rarr)
-) NIL;
+
 QSORT := Y (
 \qsort.\arr.
     IF (<= (LENGTH arr) 1)
@@ -96,23 +66,9 @@ QSORT := Y (
         ) (NTH arr (/ (LENGTH arr) 2))
     )
 );
-APPEND :=
-(Y
-  (\f.\xs.\ys.
-    (ISNIL xs)
-      ys
-      (LIST (HEAD xs) (f (TAIL xs) ys))
-  )
-);
 
+ARR := LIST 3 (LIST 2 (SINGLE 1));
+ARRR := LIST 1 (LIST 2 (SINGLE 3));
+ARRRR := LIST 6 (LIST 5 (LIST 4 (LIST 3 (LIST 2 (SINGLE 1)))));
 
-FACTORIAL := Y (\f.\x. IF (== x 0) 1 (* x (f (- x 1))));
-
-TMP := LIST 3 (LIST 2 (LIST 1 NIL));
-TTMP := LIST 2 (LIST 1 NIL);
-TTTMP := LIST 2 NIL;
-ARR := REVERSE(LIST 1 (LIST 2 (LIST 3 (LIST 4 (LIST 5 (LIST 6 NIL))))));
-
-SORTED_ARR := QSORT TTMP;
-
-/ 10 2
+FACTORIAL 6

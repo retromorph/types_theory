@@ -1,7 +1,7 @@
 import re
 import cProfile
 
-from src.lc.calculi_vanilla import Term
+from src.lc.calculi_optimized import Term
 from lc_macro.parser import LambdaLetParser
 from src.lc_macro.preprocessors import NumberPreprocessor
 

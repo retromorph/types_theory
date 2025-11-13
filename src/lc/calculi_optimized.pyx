@@ -1,9 +1,9 @@
 from __future__ import annotations
 import re
-from .calculi_vanilla import Term as TermVan, Var as VarVan, App as AppVan, Abs as AbsVan
-from ..common.utils import get_nth_lex_string, get_random_var_name, fresh_name
-from libc.stdint cimport uint32_t
-from typing import Dict, Tuple, Optional
+from ..common.utils import get_nth_lex_string, get_random_var_name
+from libcpp.unordered_set cimport unordered_set
+from libcpp.string cimport string as cpp_string
+from typing import Dict, Tuple
 
 _term_cache: Dict[Tuple, "Term"] = {}
 
@@ -15,10 +15,7 @@ cdef class Term:
     def __hash__(self) -> int:
         return self._hash
 
-    cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
-        raise NotImplementedError("Subclasses must implement this method")
-
-    cpdef Term subst(self, uint32_t idx, Term value):
+    cpdef Term subst(self, cpp_string var, Term value):
         raise NotImplementedError("Subclasses must implement this method")
 
     cpdef Term reduce(self):
@@ -34,53 +31,21 @@ cdef class Term:
                 break
             prev = term
             term = term.reduce()
-            print(i)
             i += 1
 
         return term, i
 
-    def from_debruijn(self, term, env=None):
-        if env is None:
-            env = []
-
-        if isinstance(term, Var):
-            idx = (<Var>term).idx
-            if idx >= len(env):
-                raise ValueError(f"Unbound DB index {idx}")
-            return VarVan(env[idx])
-
-        elif isinstance(term, App):
-            return AppVan(
-                self.from_debruijn((<App>term).func, env),
-                self.from_debruijn((<App>term).arg, env)
-            )
-
-        elif isinstance(term, Abs):
-            used = set(env)
-            param = fresh_name(used)
-            return AbsVan(
-                param,
-                self.from_debruijn(term.body, [param] + env)
-            )
-
-        else:
-            raise TypeError("Unknown DB-term")
-
-    def __str__(self) -> str:
-        return self.from_debruijn(self).__str__()
-
 
 cdef class Var(Term):
-    def __init__(self, uint32_t idx):
+    def __init__(self, str name):
         super().__init__()
-        self.idx = idx
-        self._hash = hash(("v", idx))
+        self.name = cpp_string(name.encode())
+        self.free_vars = unordered_set[cpp_string]()
+        self.free_vars.insert(self.name)
+        self._hash = hash(("v", name))
 
-    cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
-        return VarFact(self.idx + offset) if self.idx >= cutoff else self
-
-    cpdef Term subst(self, uint32_t idx, Term value):
-        return value if self.idx == idx else self
+    cpdef Term subst(self, cpp_string var, Term value):
+        return value if self.name == var else self
 
     cpdef Term reduce(self):
         return self
@@ -89,20 +54,20 @@ cdef class Var(Term):
         return self._hash
 
     def __eq__(self, other):
-        return isinstance(other, Var) and self.idx == (<Var>other).idx
+        return isinstance(other, Var) and self.name == (<Var>other).name
 
     def __str__(self) -> str:
-        return get_nth_lex_string(self.idx)
+        return self.name.decode('utf-8')
 
     def __repr__(self) -> str:
-        return f'{self.idx}'
+        return self.name.decode('utf-8')
 
 
-def VarFact(idx: int) -> Var:
-    key = ("v", idx)
+def VarFact(name: str) -> Var:
+    key = ("v", name)
     t = _term_cache.get(key)
     if t is None:
-        t = Var(idx)
+        t = Var(name)
         _term_cache[key] = t
     return t
 
@@ -113,14 +78,18 @@ cdef class App(Term):
         self.func = func
         self.arg = arg
         self._hash = hash(("a", func, arg))
+        self.free_vars = unordered_set[cpp_string]()
 
-    cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
-        return AppFact(self.func.shift(offset, cutoff), self.arg.shift(offset, cutoff))
+        cdef cpp_string cpp_var
+        for cpp_var in func.free_vars:
+            self.free_vars.insert(cpp_var)
+        for cpp_var in arg.free_vars:
+            self.free_vars.insert(cpp_var)
 
-    cpdef Term subst(self, uint32_t idx, Term value):
+    cpdef Term subst(self, cpp_string var, Term value):
         return AppFact(
-            self.func.subst(idx, value),
-            self.arg.subst(idx, value)
+            self.func.subst(var, value),
+            self.arg.subst(var, value)
         )
 
     cpdef Term reduce(self):
@@ -128,7 +97,7 @@ cdef class App(Term):
             return self.nf
 
         if isinstance(self.func, Abs):
-            self.nf = (<Abs>self.func).body.subst(0, self.arg.shift(1)).shift(-1).reduce()
+            self.nf = (<Abs>self.func).body.subst((<Abs>self.func).param, self.arg).reduce()
             return self.nf
 
         cdef Term reduced_func = self.func.reduce()
@@ -147,18 +116,18 @@ cdef class App(Term):
     def __eq__(self, other):
         return isinstance(other, App) and self.func == other.func and self.arg == other.arg
 
-    # def __str__(self) -> str:
-    #     cdef str func_str = f"({self.func})"
-    #     if (isinstance(self.func, App) and isinstance((<App>self.func).func, App) and
-    #         isinstance((<App>self.func).arg, App)) or isinstance(self.func, Var):
-    #         func_str = re.sub(r"^\((.*)\)$", r"\1", func_str)
-    #
-    #     cdef str arg_str = f"({self.arg})"
-    #     if isinstance(self.arg, Abs) or isinstance(self.arg, Var):
-    #         arg_str = re.sub(r"^\((.*)\)$", r"\1", arg_str)
-    #
-    #     return f"{func_str} {arg_str}"
-    #
+    def __str__(self) -> str:
+        cdef str func_str = f"({self.func})"
+        if (isinstance(self.func, App) and isinstance((<App>self.func).func, App) and
+            isinstance((<App>self.func).arg, App)) or isinstance(self.func, Var):
+            func_str = re.sub(r"^\((.*)\)$", r"\1", func_str)
+
+        cdef str arg_str = f"({self.arg})"
+        if isinstance(self.arg, Abs) or isinstance(self.arg, Var):
+            arg_str = re.sub(r"^\((.*)\)$", r"\1", arg_str)
+
+        return f"{func_str} {arg_str}"
+
     def __repr__(self) -> str:
         return f"({repr(self.func)} {repr(self.arg)})"
 
@@ -173,16 +142,37 @@ def AppFact(f: Term, a: Term) -> App:
 
 
 cdef class Abs(Term):
-    def __init__(self, Term body):
+    def __init__(self, str param, Term body):
         super().__init__()
+        self.param = cpp_string(param.encode())
         self.body = body
-        self._hash = hash(("l", body))
+        self._hash = hash(("l", param, body))
+        self.free_vars = unordered_set[cpp_string]()
 
-    cpdef Term shift(self, uint32_t offset, uint32_t cutoff=0):
-        return AbsFact(self.body.shift(offset, cutoff + 1))
+        cdef cpp_string cpp_var
+        for cpp_var in body.free_vars:
+            if cpp_var != self.param:
+                self.free_vars.insert(cpp_var)
 
-    cpdef Term subst(self, uint32_t idx, Term value):
-        return AbsFact(self.body.subst(idx + 1, value.shift(1)))
+    cpdef Term subst(self, cpp_string var, Term value):
+        if self.param == var:
+            return self
+        elif self.body.free_vars.count(var) == 0 and value.free_vars.count(self.param) == 0:
+            return self
+        elif self.body.free_vars.count(var) == 0 or value.free_vars.count(self.param) == 0:
+            return AbsFact(
+                self.param.decode('utf-8'),
+                self.body.subst(var, value)
+            )
+
+        cdef str new_variable = get_random_var_name()
+        cdef cpp_string cpp_new_variable = cpp_string(new_variable.encode())
+        cdef Term alpha_step = self.body.subst(self.param, VarFact(new_variable))
+        cdef Term subst_step = alpha_step.subst(var, value)
+        return AbsFact(
+            new_variable,
+            subst_step
+        )
 
     cpdef Term reduce(self):
         if self.nf is not None:
@@ -192,7 +182,7 @@ cdef class Abs(Term):
         if body_nf is self.body:
             nf = self
         else:
-            nf = AbsFact(body_nf)
+            nf = AbsFact(self.param.decode('utf-8'), body_nf)
         self.nf = nf
         return nf
 
@@ -202,20 +192,20 @@ cdef class Abs(Term):
     def __eq__(self, other):
         return isinstance(other, Abs) and self.body == other.body
 
-    # def __str__(self) -> str:
-    #     cdef str body_str = f"({self.body})"
-    #     if isinstance(self.body, (App, Abs)) or isinstance(self.body, Var):
-    #         body_str = re.sub(r"^\((.*)\)$", r"\1", body_str)
-    #     return f"\\{self.param.decode('utf-8')}. {body_str}"
-    #
+    def __str__(self) -> str:
+        cdef str body_str = f"({self.body})"
+        if isinstance(self.body, (App, Abs)) or isinstance(self.body, Var):
+            body_str = re.sub(r"^\((.*)\)$", r"\1", body_str)
+        return f"\\{self.param.decode('utf-8')}. {body_str}"
+
     def __repr__(self) -> str:
-        return f"(\\. {repr(self.body)})"
+        return f"(\\{self.param.decode('utf-8')}. {repr(self.body)})"
 
 
-def AbsFact(body: Term) -> Abs:
-    key = ("l", body)
+def AbsFact(param: str, body: Term) -> Abs:
+    key = ("l", param, body)
     t = _term_cache.get(key)
     if t is None:
-        t = Abs(body)
+        t = Abs(param, body)
         _term_cache[key] = t
     return t

@@ -17,10 +17,7 @@ class LambdaParser:
         if self.tok.peek() is not None and self.tok.peek() != "":
             raise SyntaxError(f"Unexpected token: {self.tok.peek()}")
 
-        if self.calculi == 'Vanilla':
-            return term
-        else:
-            return self.to_optimized(term)
+        return term
 
     def parse_term(self) -> Term:
         if self.tok.peek() == "\\":
@@ -37,7 +34,10 @@ class LambdaParser:
         if dot != ".":
             raise SyntaxError(f"Expected '.', got {dot}")
         body = self.parse_term()
-        return Abs(param, body)
+        if self.calculi == 'Vanilla':
+            return Abs(param, body)
+        else:
+            return AbsFact(param, body)
 
     def parse_app(self) -> Term:
         left = self.parse_atom()
@@ -50,7 +50,10 @@ class LambdaParser:
                 right = self.parse_abs()
             else:
                 right = self.parse_atom()
-            left = App(left, right)
+            if self.calculi == 'Vanilla':
+                left = App(left, right)
+            else:
+                left = AppFact(left, right)
         return left
 
     def parse_atom(self) -> Term:
@@ -63,7 +66,10 @@ class LambdaParser:
             return term
         elif re.match(VARIABLES_REGEX, tok or ""):
             self.tok.next()
-            return Var(tok)
+            if self.calculi == 'Vanilla':
+                return Var(tok)
+            else:
+                return VarFact(tok)
         else:
             raise SyntaxError(f"Unexpected token: {tok}")
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Union
-from src.lc.calculi_vanilla import Term
+from src.lc.calculi_optimized import Term
 from dataclasses import dataclass
 
 
@@ -11,9 +11,9 @@ class Let:
 
     def print(self, pretty=False) -> str:
         if pretty:
-            return f"{self.slug} := ({self.body.print(pretty)})"
+            return f"{self.slug} := ({self.body})"
         else:
-            return f"{self.slug} := {self.body.print(pretty)}"
+            return f"{self.slug} := {self.body}"
 
 
 class Line:

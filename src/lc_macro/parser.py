@@ -45,20 +45,20 @@ class LambdaLetParser:
         if re.match(MACRO_REGEX, tok.peek()):
             return Line(self.parse_let(tok))
         else:
-            parser = LambdaParser(line)
+            parser = LambdaParser(line, calculi='Optimized')
             return Line(parser.parse())
 
     def parse_let(self, tok: Tokenizer) -> Let:
         slug = tok.next()
         tok.next()
         body_str = tok.next()
-        body = LambdaParser(body_str).parse()
+        body = LambdaParser(body_str, calculi='Optimized').parse()
 
         # hack
         if slug == 'Y' or ('Y' in self.substitutions.keys() and self.substitutions['Y'] in body_str):
             self.substitutions[slug] = body_str
             return Let(slug, body)
         else:
-            reduced_body, _ = body.normalize( n_steps=1000)
+            reduced_body, _ = body.normalize(n_steps=1000)
             self.substitutions[slug] = repr(reduced_body)
             return Let(slug, reduced_body)
