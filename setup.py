@@ -7,7 +7,7 @@ setup(
     version="0.1",
     packages=find_packages(),
     ext_modules=cythonize(
-        ["src/lc/calculi_vanilla.pyx"],
+        ["src/lc/calculi_vanilla.pyx", "src/lc/calculi_optimized.pyx"],
         compiler_directives={
             "language_level": 3,
             "boundscheck": False,

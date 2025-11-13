@@ -1,5 +1,6 @@
 import re
 from .calculi_vanilla import Term, Var, App, Abs
+from .calculi_optimized import Term as TermOpt, Var as VarOpt, App as AppOpt, Abs as AbsOpt
 from ..common.tokenizer import Tokenizer
 
 VARIABLES_REGEX = r"[a-z_]+"
@@ -7,14 +8,19 @@ LC_REGEX = re.compile(rf"\s*(?:(\\)|(\.)|(\()|(\))|({VARIABLES_REGEX})|$)")
 
 
 class LambdaParser:
-    def __init__(self, text):
+    def __init__(self, text: str, calculi: str = 'Vanilla'):
         self.tok = Tokenizer(text, token_regex=LC_REGEX)
+        self.calculi = calculi
 
-    def parse(self) -> Term:
+    def parse(self):
         term = self.parse_term()
         if self.tok.peek() is not None and self.tok.peek() != "":
             raise SyntaxError(f"Unexpected token: {self.tok.peek()}")
-        return term
+
+        if self.calculi == 'Vanilla':
+            return term
+        else:
+            return self.to_optimized(term)
 
     def parse_term(self) -> Term:
         if self.tok.peek() == "\\":
@@ -60,3 +66,27 @@ class LambdaParser:
             return Var(tok)
         else:
             raise SyntaxError(f"Unexpected token: {tok}")
+
+    def to_optimized(self, term: Term, env=None) -> TermOpt:
+        if env is None:
+            env = []
+
+        if isinstance(term, Var):
+            if term.name not in env:
+                raise ValueError(f"Free variable {term.name} encountered")
+            idx = env.index(term.name)
+            return VarOpt(idx)
+
+        elif isinstance(term, Abs):
+            new_env = [term.param] + env
+            body = self.to_optimized(term.body, new_env)
+            return AbsOpt(body)
+
+        elif isinstance(term, App):
+            return AppOpt(
+                self.to_optimized(term.func, env),
+                self.to_optimized(term.arg, env)
+            )
+
+        else:
+            raise TypeError("Unknown term type")

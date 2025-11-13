@@ -20,7 +20,7 @@ class CLI:
     def run_from_file(self):
         with open(self.variables['I'], "r", encoding="utf-8") as input_file:
             program = input_file.read()
-            lambda_parser = LambdaParser(program)
+            lambda_parser = LambdaParser(program, calculi='Optimized')
             parsed_term = lambda_parser.parse()
             normalized_term = self.normalize(parsed_term)
 
@@ -34,9 +34,10 @@ class CLI:
         while True:
             try:
                 program = input('> ')
-                lambda_parser = LambdaParser(program)
+                lambda_parser = LambdaParser(program, calculi='Optimized')
                 parsed_term = lambda_parser.parse()
 
+                print(repr(self.normalize(parsed_term)))
                 print(self.normalize(parsed_term))
             except SyntaxError as err:
                 print(err)
