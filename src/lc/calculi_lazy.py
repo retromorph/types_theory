@@ -1,74 +1,11 @@
+from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
-from ..common.utils import get_random_var_name
+from typing import Dict, Tuple
 
+from src.common.utils import get_random_var_name
 
-class Node:
-    __slots__ = ("kind", "var", "body", "func", "arg", "free_vars")
-
-    def __init__(self, kind, var=None, body=None, func=None, arg=None):
-        self.kind = kind
-        self.var = var
-        self.body = body
-        self.func = func
-        self.arg = arg
-        if kind == 0:
-            self.free_vars = {var}
-        elif kind == 1:
-            self.free_vars = func.free_vars | arg.free_vars
-        else:
-            self.free_vars = body.free_vars - {var}
-
-    def subst(self, var: str, value: 'Node') -> 'Node':
-        if self.kind == 0:
-            if self.var == var:
-                return value
-            return self
-        elif self.kind == 1:
-            return Node(
-                1,
-                func=self.func.subst(var, value),
-                arg=self.arg.subst(var, value)
-            )
-        else:
-            if self.var == var:
-                return self
-            elif var not in self.body.free_vars and self.var not in value.free_vars:
-                return self
-            elif var not in self.body.free_vars or self.var not in value.free_vars:
-                return Node(
-                    2,
-                    var=self.var,
-                    body=self.body.subst(var, value)
-                )
-
-            new_variable = get_random_var_name()
-            alpha_step = self.body.subst(self.var, Node(0, var=new_variable))
-            subst_step = alpha_step.subst(var, value)
-            return Node(
-                2,
-                var=new_variable,
-                body=subst_step
-            )
-
-    def reduce(self) -> 'Node':
-        if self.kind == 0:
-            return self
-        elif self.kind == 1:
-            if self.func.kind == 2:
-                return self.func.body.subst(self.func.var, self.arg)
-
-            reduced_func = self.func.reduce()
-            if reduced_func != self.func:
-                return Node(1, func=reduced_func, arg=self.arg)
-
-            reduced_arg = self.arg.reduce()
-            if reduced_arg != self.arg:
-                return Node(1, func=self.func, arg=reduced_arg)
-
-            return self
-        else:
-            return Node(2, var=self.var, body=self.body.reduce())
+Env = Dict[str, 'Term']
 
 
 class Term(ABC):
@@ -82,7 +19,11 @@ class Term(ABC):
     def reduce(self) -> 'Term':
         pass
 
-    def normalize(self, n_steps: int = -1) -> ('Term', int):
+    @abstractmethod
+    def lazy_reduce(self, env: Env) -> Tuple[Env, 'Abs']:
+        pass
+
+    def energetic_normalize(self, n_steps: int = -1) -> ('Term', int):
         term = self
         prev = None
         i = 0
@@ -94,12 +35,50 @@ class Term(ABC):
             i += 1
         return term, i
 
+    def normalize(self) -> ('Term', int):
+        env, term = self.lazy_reduce({})
+        cumulative_steps = 0
+        for name, bound in reversed(env.items()):
+            bound_normalized, n_steps = bound.energetic_normalize()
+            term = term.subst(name, bound_normalized)
+            cumulative_steps += n_steps
+
+        term_normalized, n_steps = term.energetic_normalize()
+        return term_normalized, cumulative_steps + n_steps
+
 
 class Var(Term):
     name: str
 
     def __init__(self, name: str):
         self.name = name
+        self.free_vars = {name}
+
+    def subst(self, var: str, value: 'Term') -> 'Term':
+        if self.name == var:
+            return value
+        return self
+
+    def reduce(self) -> 'Term':
+        return self
+
+    def lazy_reduce(self, env: Env) -> Tuple[Env, 'Abs']:
+        name = self.name
+        if name not in env:
+            # raise NameError(f"Unbound variable: {name}")
+            return env, self
+        if self in env.values():
+            # raise NameError(f"Recursion with: {name}")
+            return env, self
+
+        bound = env[name]
+        if isinstance(bound, Abs):
+            return env, bound
+
+        env_2, value = bound.lazy_reduce(env)
+        ext_env_2 = dict(env_2)
+        ext_env_2[name] = value
+        return ext_env_2, value
 
     def __eq__(self, other):
         return isinstance(other, Var) and self.name == other.name
@@ -118,6 +97,39 @@ class App(Term):
     def __init__(self, func: 'Term', arg: 'Term'):
         self.func = func
         self.arg = arg
+        self.free_vars = func.free_vars | arg.free_vars
+
+    def subst(self, var: str, value: 'Term') -> 'Term':
+        return App(
+            self.func.subst(var, value),
+            self.arg.subst(var, value)
+        )
+
+    def reduce(self) -> 'Term':
+        if isinstance(self.func, Abs):
+            return self.func.body.subst(self.func.param, self.arg)
+
+        reduced_func = self.func.reduce()
+        if reduced_func != self.func:
+            return App(reduced_func, self.arg)
+
+        reduced_arg = self.arg.reduce()
+        if reduced_arg != self.arg:
+            return App(self.func, reduced_arg)
+
+        return self
+
+    def lazy_reduce(self, env) -> Tuple[Env, 'Abs']:
+        env_2, func_reduced = self.func.lazy_reduce(env)
+        if not isinstance(func_reduced, Abs):
+            # raise RuntimeError(
+            #     f"Non-lambda function in application: {func_reduced!r}"
+            # )
+            return env, self
+
+        ext_env_2 = dict(env_2)
+        ext_env_2[func_reduced.param] = self.arg
+        return func_reduced.body.lazy_reduce(ext_env_2)
 
     def __eq__(self, other):
         return isinstance(other, App) and self.func == other.func and self.arg == other.arg
@@ -146,6 +158,32 @@ class Abs(Term):
     def __init__(self, param: str, body: 'Term'):
         self.param = param
         self.body = body
+        self.free_vars = body.free_vars - {param}
+
+    def subst(self, var: str, value: 'Term') -> 'Term':
+        if self.param == var:
+            return self
+        elif var not in self.body.free_vars and self.param not in value.free_vars:
+            return self
+        elif var not in self.body.free_vars or self.param not in value.free_vars:
+            return Abs(
+                self.param,
+                self.body.subst(var, value)
+            )
+
+        new_variable = get_random_var_name()
+        alpha_step = self.body.subst(self.param, Var(new_variable))
+        subst_step = alpha_step.subst(var, value)
+        return Abs(
+            new_variable,
+            subst_step
+        )
+
+    def reduce(self) -> 'Term':
+        return Abs(self.param, self.body.reduce())
+
+    def lazy_reduce(self, env) -> Tuple[Env, 'Abs']:
+        return env, self
 
     def __eq__(self, other):
         return isinstance(other, Abs) and self.param == other.param and self.body == other.body

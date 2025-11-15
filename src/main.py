@@ -2,6 +2,7 @@ import re
 import cProfile
 
 from src.lc.calculi_optimized import Term
+from src.lc.calculi_lazy import Term as TermLazy
 from lc_macro.parser import LambdaLetParser
 from src.lc_macro.preprocessors import NumberPreprocessor
 
@@ -66,8 +67,8 @@ with open("src/program.lc", "r", encoding="utf-8") as file:
     # print("=======================")
 
     for line in parsed_program.lines:
-        if isinstance(line.value, Term):
-            print(line.value)
+        if isinstance(line.value, TermLazy):
+            print(repr(line.value))
             # result = cProfile.run('normalize(line.value, trace=True)')
             result, _ = line.value.normalize()
             print(f"Steps: {_}")

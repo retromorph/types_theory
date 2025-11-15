@@ -1,7 +1,10 @@
 import re
+from typing import Union
 from .calculi_vanilla import Term, Var, App, Abs
+from .calculi_lazy import Term as TermLazy, Var as VarLazy, App as AppLazy, Abs as AbsLazy
 from .calculi_optimized import Term as TermOpt, VarFact, AppFact, AbsFact
 from ..common.tokenizer import Tokenizer
+
 
 VARIABLES_REGEX = r"[a-z_]+"
 LC_REGEX = re.compile(rf"\s*(?:(\\)|(\.)|(\()|(\))|({VARIABLES_REGEX})|$)")
@@ -12,20 +15,19 @@ class LambdaParser:
         self.tok = Tokenizer(text, token_regex=LC_REGEX)
         self.calculi = calculi
 
-    def parse(self):
+    def parse(self) -> Union[Term, TermOpt, TermLazy]:
         term = self.parse_term()
         if self.tok.peek() is not None and self.tok.peek() != "":
             raise SyntaxError(f"Unexpected token: {self.tok.peek()}")
-
         return term
 
-    def parse_term(self) -> Term:
+    def parse_term(self) -> Union[Term, TermOpt, TermLazy]:
         if self.tok.peek() == "\\":
             return self.parse_abs()
         else:
             return self.parse_app()
 
-    def parse_abs(self) -> Term:
+    def parse_abs(self) -> Union[Term, TermOpt, TermLazy]:
         self.tok.next()
         param = self.tok.next()
         if not re.match(VARIABLES_REGEX, param or ""):
@@ -36,10 +38,12 @@ class LambdaParser:
         body = self.parse_term()
         if self.calculi == 'Vanilla':
             return Abs(param, body)
+        elif self.calculi == 'Lazy':
+            return AbsLazy(param, body)
         else:
             return AbsFact(param, body)
 
-    def parse_app(self) -> Term:
+    def parse_app(self) -> Union[Term, TermOpt, TermLazy]:
         left = self.parse_atom()
         while True:
             nxt = self.tok.peek()
@@ -52,11 +56,13 @@ class LambdaParser:
                 right = self.parse_atom()
             if self.calculi == 'Vanilla':
                 left = App(left, right)
+            elif self.calculi == 'Lazy':
+                left = AppLazy(left, right)
             else:
                 left = AppFact(left, right)
         return left
 
-    def parse_atom(self) -> Term:
+    def parse_atom(self) -> Union[Term, TermOpt, TermLazy]:
         tok = self.tok.peek()
         if tok == "(":
             self.tok.next()
@@ -68,31 +74,9 @@ class LambdaParser:
             self.tok.next()
             if self.calculi == 'Vanilla':
                 return Var(tok)
+            elif self.calculi == 'Lazy':
+                return VarLazy(tok)
             else:
                 return VarFact(tok)
         else:
             raise SyntaxError(f"Unexpected token: {tok}")
-
-    def to_optimized(self, term: Term, env=None) -> TermOpt:
-        if env is None:
-            env = []
-
-        if isinstance(term, Var):
-            if term.name not in env:
-                raise ValueError(f"Free variable {term.name} encountered")
-            idx = env.index(term.name)
-            return VarFact(idx)
-
-        elif isinstance(term, Abs):
-            new_env = [term.param] + env
-            body = self.to_optimized(term.body, new_env)
-            return AbsFact(body)
-
-        elif isinstance(term, App):
-            return AppFact(
-                self.to_optimized(term.func, env),
-                self.to_optimized(term.arg, env)
-            )
-
-        else:
-            raise TypeError("Unknown term type")

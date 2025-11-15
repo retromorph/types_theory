@@ -10,6 +10,7 @@ class CLI:
     def __init__(self, variables: dict[str, str]):
         self.variables = variables
         self.trace = variables.get('trace', 'None')
+        self.calculi = variables.get('calculi', 'Vanilla')
 
     def run(self):
         if 'I' in self.variables:
@@ -20,7 +21,7 @@ class CLI:
     def run_from_file(self):
         with open(self.variables['I'], "r", encoding="utf-8") as input_file:
             program = input_file.read()
-            lambda_parser = LambdaParser(program, calculi='Optimized')
+            lambda_parser = LambdaParser(program, calculi=self.calculi)
             parsed_term = lambda_parser.parse()
             normalized_term = self.normalize(parsed_term)
 
@@ -34,10 +35,9 @@ class CLI:
         while True:
             try:
                 program = input('> ')
-                lambda_parser = LambdaParser(program, calculi='Optimized')
+                lambda_parser = LambdaParser(program, calculi=self.calculi)
                 parsed_term = lambda_parser.parse()
 
-                print(repr(self.normalize(parsed_term)))
                 print(self.normalize(parsed_term))
             except SyntaxError as err:
                 print(err)
@@ -68,3 +68,4 @@ if __name__ == '__main__':
 
     cli = CLI(variables)
     cli.run()
+# (\n.\s.\z. (s (n s z))) \s.\z.z

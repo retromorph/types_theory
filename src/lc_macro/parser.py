@@ -45,7 +45,7 @@ class LambdaLetParser:
         if re.match(MACRO_REGEX, tok.peek()):
             return Line(self.parse_let(tok))
         else:
-            parser = LambdaParser(line, calculi='Optimized')
+            parser = LambdaParser(line, calculi='Lazy')
             return Line(parser.parse())
 
     def parse_let(self, tok: Tokenizer) -> Let:
